@@ -31,7 +31,7 @@ const UniswapV3PriceSetter = () => {
 
   useEffect(() => {
     const fetchCurrentPriceAndSymbols = async () => {
-      const provider = new ethers.providers.JsonRpcProvider("https://autumn-few-shape.base-mainnet.quiknode.pro/4e7dc9cb673fd2393917d49ddeb31862959ffbc7");
+      const provider = new ethers.providers.JsonRpcProvider("https://mainnet.base.org");
       const poolContract = new ethers.Contract(poolAddress, IUniswapV3PoolABI.abi, provider);
 
       const token0Address = await poolContract.token0();
