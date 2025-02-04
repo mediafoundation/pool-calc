@@ -27,48 +27,72 @@ const UniswapV3PriceSetter = () => {
   const [currentToken1Reserve, setCurrentToken1Reserve] = useState('');
   const [token0, setToken0] = useState({});
   const [token1, setToken1] = useState({});
+  const [prices, setPrices] = useState({});
 
+  const fetchCurrentPriceAndSymbols = async () => {
+    const provider = new ethers.providers.JsonRpcProvider("https://mainnet.base.org");
+    const poolContract = new ethers.Contract(poolAddress, IUniswapV3PoolABI.abi, provider);
+
+    const token0Address = await poolContract.token0();
+    const token1Address = await poolContract.token1();
+
+    // Create ERC-20 contract instances for token0 and token1
+    const token0Contract = new ethers.Contract(token0Address, ERC20ABI, provider);
+    const token1Contract = new ethers.Contract(token1Address, ERC20ABI, provider);
+
+    // Fetch symbols and decimals for token0 and token1
+    const [token0Symbol, token1Symbol, token0Decimals, token1Decimals, token0Reserve, token1Reserve] = await Promise.all([
+      token0Contract.symbol(),
+      token1Contract.symbol(),
+      token0Contract.decimals(),
+      token1Contract.decimals(),
+      token0Contract.balanceOf(poolAddress),
+      token1Contract.balanceOf(poolAddress),
+    ]);
+
+    // Assuming 18 decimals for tokens, adjust accordingly
+    const token0 = new Token(chainId, token0Address, token0Decimals, token0Symbol);
+    const token1 = new Token(chainId, token1Address, token1Decimals, token1Symbol);
+
+    setToken0(token0);
+    setToken1(token1);
+
+    const adjustedPrice = token1Reserve / token0Reserve;
+
+    // Depending on your token order, adjust the price calculation
+    setCurrentPrice(`1 ${token0.symbol} = ${adjustedPrice.toString()} ${token1.symbol}`);
+    setCurrentToken0Reserve(token0Reserve.toString());
+    setCurrentToken1Reserve(token1Reserve.toString());
+
+  };
 
   useEffect(() => {
-    const fetchCurrentPriceAndSymbols = async () => {
-      const provider = new ethers.providers.JsonRpcProvider("https://mainnet.base.org");
-      const poolContract = new ethers.Contract(poolAddress, IUniswapV3PoolABI.abi, provider);
-
-      const token0Address = await poolContract.token0();
-      const token1Address = await poolContract.token1();
-
-      // Create ERC-20 contract instances for token0 and token1
-      const token0Contract = new ethers.Contract(token0Address, ERC20ABI, provider);
-      const token1Contract = new ethers.Contract(token1Address, ERC20ABI, provider);
-
-      // Fetch symbols and decimals for token0 and token1
-      const [token0Symbol, token1Symbol, token0Decimals, token1Decimals, token0Reserve, token1Reserve] = await Promise.all([
-        token0Contract.symbol(),
-        token1Contract.symbol(),
-        token0Contract.decimals(),
-        token1Contract.decimals(),
-        token0Contract.balanceOf(poolAddress),
-        token1Contract.balanceOf(poolAddress),
-      ]);
-
-      // Assuming 18 decimals for tokens, adjust accordingly
-      const token0 = new Token(chainId, token0Address, token0Decimals, token0Symbol);
-      const token1 = new Token(chainId, token1Address, token1Decimals, token1Symbol);
-
-      setToken0(token0);
-      setToken1(token1);
-
-      const adjustedPrice = token1Reserve / token0Reserve;
-
-      // Depending on your token order, adjust the price calculation
-      setCurrentPrice(`1 ${token0.symbol} = ${adjustedPrice.toString()} ${token1.symbol}`);
-      setCurrentToken0Reserve(token0Reserve.toString());
-      setCurrentToken1Reserve(token1Reserve.toString());
-
-    };
-
     fetchCurrentPriceAndSymbols();
   }, [poolAddress]);
+
+  const getPrices = async (pair) => {
+    //https://api.coinbase.com/v2/prices/ETH-USD/spot
+    //https://api.coinbase.com/v2/prices/MEDIA-USD/spot
+    //{"data":{"amount":"22.075","base":"MEDIA","currency":"USD"}}
+    let prices = {};
+
+    const response = await fetch(`https://api.coinbase.com/v2/prices/ETH-USD/spot`);
+    const data = await response.json();
+    prices['ETH'] = data.data.amount;
+
+    const response2 = await fetch('https://api.coinbase.com/v2/prices/MEDIA-USD/spot');
+    const data2 = await response2.json();
+    prices['MEDIA'] = data2.data.amount;
+
+    setPrices(prices);
+    setTargetPrice(prices['ETH'] / prices['MEDIA']);
+
+  }
+
+  useEffect(() => {
+    getPrices();
+  }, []);
+
 
   function calculateSwapAmount(reserveA, reserveB, targetPrice) {
     //check if targetPrice is a number
@@ -119,7 +143,16 @@ const UniswapV3PriceSetter = () => {
 
   return (
     <div className="max-w-md mx-auto bg-white dark:bg-neutral-950 shadow-md rounded-lg p-4 m-8">
-      <div className="mb-4">
+        <div className="flex items-center gap-5">
+          {prices['ETH'] && <p className="label !mt-0">ETH-USD: <span className="item">{prices['ETH']}</span></p>}
+          {prices['MEDIA'] && <p className="label !mt-0">MEDIA-USD: <span className="item">{prices['MEDIA']}</span></p>}
+          <button className="dark:text-neutral-200 bg-gray-100 dark:bg-neutral-900 p-2 rounded-lg" onClick={() => {
+
+            fetchCurrentPriceAndSymbols();
+            getPrices();
+          }}>Refresh</button>
+        </div>
+        <div className="mt-4">
         <label className="block label">Pool Address:</label>
         <input type="text" value={poolAddress} onChange={(e) => setPoolAddress(e.target.value)} placeholder="Pool Address" className="text-lg px-3 py-2 bg-gray-100 dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-md dark:text-gray-100"/>
       </div>
@@ -128,15 +161,15 @@ const UniswapV3PriceSetter = () => {
       <p className="label">Current {token1.symbol} Reserve: <span className="item">{ethers.utils.formatUnits(currentToken1Reserve, token1.decimals)}</span></p>
       <div className="mt-4">
           <label className="block label">Target Price:</label>
-          <div className='flex items-center gap-2 label'>
+          <div className='flex items-center gap-2'>
             <input type="text" value={targetPrice} onChange={(e) => setTargetPrice(e.target.value)} placeholder="Target Price" className="text-lg px-3 py-2 bg-gray-100 dark:bg-neutral-900 border border-gray-300 dark:border-neutral-700 rounded-md dark:text-gray-100"/>
 
-            <span>= 1 WETH</span> 
+            <span className='dark:text-neutral-500'>= 1 WETH</span> 
           </div>
       </div>
       {targetPrice && (
           <div className="mt-4 bg-gray-100 dark:bg-neutral-900 p-4 rounded-lg">
-              <p className="label">{token0.symbol} to SWAP: <span className="item">{tokenAToSwap}</span></p>
+              <p className="label !mt-0">{token0.symbol} to SWAP: <span className="item">{tokenAToSwap}</span></p>
               <p className="label">{token1.symbol} to SWAP: <span className="item">{tokenBToSwap}</span></p>
           </div>
       )}

@@ -24,8 +24,8 @@ body {
 }
 
 .label {
-  @apply uppercase text-sm font-semibold text-neutral-500;
+  @apply uppercase text-sm font-semibold text-neutral-500 mt-4;
 }
 .item {
-  @apply font-normal text-lg text-neutral-200 block mb-4
+  @apply font-normal text-lg text-neutral-200 block 
 }
